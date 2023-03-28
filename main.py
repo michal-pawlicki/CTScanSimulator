@@ -6,12 +6,12 @@ import math
 from bresenham import bresenham
 
 
-def radon_transform(image, num_angles, num_detect, theta):
+def radon_transform(image, num_angles, num_detect, theta, rotation):
     global min
     shape_min = min(image.shape[:2])
     r = shape_min // 2 - 1
 
-    angles = np.linspace(0, np.pi*2, num_angles, endpoint=False)
+    angles = np.linspace(0, np.pi*2, num_angles, endpoint=False)[:rotation]
     sinogram = np.zeros((num_angles, num_detect, 3))
 
     for i, angle in enumerate(angles):
@@ -46,9 +46,9 @@ def main():
     st.title('CT scan simulator')
     st.subheader('by Agnieszka Grzymska and Michał Pawlicki')
     st.markdown('---')
-    file, num_angles, num_detect, theta = side_bar()
+    file, num_angles, num_detect, theta, rotation = side_bar()
     image = plt.imread('./images/'+file, format='gray')
-    sinogram = radon_transform(image, num_angles, num_detect, theta)
+    sinogram = radon_transform(image, num_angles, num_detect, theta, rotation)
     st.image(image, width=300)
     st.image(sinogram, width=300)
 
@@ -59,6 +59,8 @@ def side_bar():
     angles = [1,2,3,5,10,15,18,20,30,36,40,45,60,72,90,120,180,360]
     alpha = st.sidebar.select_slider("Select value of alpha", options=angles)
     num_angles = int(360/alpha)
+    st.sidebar.markdown("""$Rotation$ $progress$""")
+    rotation = st.sidebar.select_slider("Select number of steps", options=range(1, num_angles + 1, 1))
     st.sidebar.markdown("""$Number$ $of$ $detectors$""")
     num_detect = st.sidebar.select_slider("Select value of n", options=range(10, 101, 10))
     st.sidebar.markdown("""$Span$ $of$ $the$ $emitter$ $system$""")
@@ -69,7 +71,7 @@ def side_bar():
     file = st.sidebar.selectbox(
         'Choose a file to read',
         files)
-    return file, num_angles, num_detect, theta
+    return file, num_angles, num_detect, theta, rotation
 
 
 if __name__ == '__main__':

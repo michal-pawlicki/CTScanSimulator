@@ -44,7 +44,7 @@ def radon_transform(image, num_angles, num_detect, theta):
 
 def main():
     st.title('CT scan simulator')
-    st.subheader('by Agnieszka Grzymaska and Michał Pawlicki')
+    st.subheader('by Agnieszka Grzymska and Michał Pawlicki')
     st.markdown('---')
     file = side_bar()
     image = plt.imread('./images/'+file, format='gray')

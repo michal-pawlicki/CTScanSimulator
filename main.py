@@ -56,16 +56,16 @@ def main():
 def side_bar():
     st.sidebar.markdown('# Set scanner options')
     st.sidebar.markdown(""" $\Delta$ $\\alpha$ $value$""")
-    angles = [1,2,3,5,10,15,18,20,30,36,40,45,60,72,90,120,180,360]
+    angles = [1,2,3,4,5,6,8,9,10]
     alpha = st.sidebar.select_slider("Select value of alpha", options=angles)
     num_angles = int(360/alpha)
     st.sidebar.markdown("""$Rotation$ $progress$""")
     rotation = st.sidebar.select_slider("Select number of steps", options=range(1, num_angles + 1, 1))
     st.sidebar.markdown("""$Number$ $of$ $detectors$""")
-    num_detect = st.sidebar.select_slider("Select value of n", options=range(10, 101, 10))
+    num_detect = st.sidebar.select_slider("Select value of n", options=range(50, 151, 10))
     st.sidebar.markdown("""$Span$ $of$ $the$ $emitter$ $system$""")
-    span = st.sidebar.select_slider("Select value of l", options=range(1, 361))
-    theta = math.radians(span)
+    span = st.sidebar.select_slider("Select value of l", options=range(20, 181))
+    theta = math.radians(span)*2
     files = os.listdir('./images')
     st.sidebar.markdown("""$File$ $to$ $scan$""")
     file = st.sidebar.selectbox(

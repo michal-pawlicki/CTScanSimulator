@@ -10,7 +10,7 @@ import pydicom._storage_sopclass_uids
 from skimage.util import img_as_ubyte
 from skimage.exposure import rescale_intensity
 
-
+@st.cache_data
 def radon_transform(image, num_angles, num_detect, theta):
     global min
     shape_min = min(image.shape[:2])
@@ -44,6 +44,7 @@ def radon_transform(image, num_angles, num_detect, theta):
     return sinogram
 
 
+@st.cache_data
 def inverse_radon_transform(sinogram, theta):
     num_angles, num_detect = sinogram.shape[:2]
     shape_min = 500
@@ -75,6 +76,7 @@ def inverse_radon_transform(sinogram, theta):
     return reconstruction
 
 
+@st.cache_data
 def convolution_filter(sinogram, size):
     filter = np.zeros(2*size+1)
     filter[size] = 1
@@ -93,15 +95,6 @@ def convolution_filter(sinogram, size):
         for y in range(len(filtered_sinogram[0])):
             filtered_sinogram[x, y] = (filtered_sinogram[x, y] - min) / (max - min)
     return filtered_sinogram
-
-
-@st.cache_data
-def generate_images(file, num_angles, num_detect, theta):
-    image = plt.imread('./images/'+file, format='gray')
-    sinogram = radon_transform(image, num_angles, num_detect, theta)
-    filtered_sinogram = convolution_filter(sinogram, 15)
-    reconstruction = inverse_radon_transform(filtered_sinogram, theta)
-    return sinogram, filtered_sinogram, reconstruction
 
 
 def convert_image_to_ubyte(img):
@@ -146,40 +139,73 @@ def save_as_dicom(file_name, img, patient_data):
     ds.PixelData = img_converted.tobytes()
     ds.save_as(file_name, write_like_original=False)
 
+def read_dicom(file):
+    ds = pydicom.dcmread(file)
+    patient_data = {}
+    patient_data["PatientName"] = ds.PatientName
+    patient_data["PatientID"] = ds.PatientID
+    patient_data["ImageComments"] = ds.ImageComments
+    ct = ds.PixelData
+    rows = ds.Rows
+    cols = ds.Columns
+    if "SamplesPerPixel" in ds:
+        channels = ds.SamplesPerPixel
+    else:
+        channels = 1
+    image = np.frombuffer(ct, dtype=np.uint8).reshape((rows, cols, channels))
+    return image, patient_data
+
 
 def main():
     st.title('CT scan simulator')
     st.subheader('by Agnieszka Grzymska and Michał Pawlicki')
     st.markdown('---')
-    file, num_angles, num_detect, theta = side_bar()
+
+    file_side_bar, num_angles, num_detect, theta = side_bar()
+    image = None
+    st.markdown("### Import from DICOM")
+    form = st.form("import", clear_on_submit=True)
+    files = os.listdir('./examples')
+    file = form.selectbox('Choose a file to read', files)
+    if form.form_submit_button("Read"):
+        image, patient_data = read_dicom('./examples/'+file)
+        st.markdown("Patient: " + str(patient_data["PatientName"]))
+        st.markdown("Patient ID number: " + str(patient_data["PatientID"]))
+        st.markdown("Comments: " + str(patient_data["ImageComments"]))
+    else:
+        image = plt.imread('./images/'+file_side_bar, format='gray')
     st.markdown("### Original image")
-    image = plt.imread('./images/'+file, format='gray')
     st.image(image, width=300)
+
     st.markdown("### Generated sinogram")
-    sinogram, filtered_sinogram, reconstruction = generate_images(file, num_angles, num_detect, theta)
+    sinogram = radon_transform(image, num_angles, num_detect, theta)
     rotation = num_angles
     steps = st.checkbox(label="Show steps")
     if steps:
         st.markdown("""$Rotation$ $progress$""")
         rotation = st.select_slider("Select number of steps", options=range(1, num_angles + 1, 1), value=num_angles)
     sinogram_steps = np.zeros((num_angles, num_detect))
-    #for line in range
     sinogram_steps[:rotation] = sinogram[:rotation]
     st.image(sinogram_steps, width=300)
+
     st.markdown("### Filtered sinogram")
+    filtered_sinogram = convolution_filter(sinogram_steps, 15)
     st.image(filtered_sinogram, width=300)
+
     st.markdown("### Reconstructed image")
+    reconstruction = inverse_radon_transform(filtered_sinogram, theta)
     st.image(reconstruction, width=300)
     st.markdown('---')
+
+    patient_data = {}
     st.markdown("### Save as DICOM")
     form = st.form("save", clear_on_submit=True)
-    patient_data = {}
     patient_data["PatientName"] = form.text_input(label="Patient name and surname", value="")
     patient_data["PatientID"] = form.text_input(label="Patient ID number", value="")
     patient_data["ImageComments"] = form.text_input(label="Comments about the image", value="")
     if form.form_submit_button("Save"):
         save_as_dicom("./dicom/"+patient_data["PatientID"], reconstruction, patient_data)
-        
+    
 
 def side_bar():
     form = st.sidebar.form("user_input")
@@ -199,6 +225,8 @@ def side_bar():
         'Choose a file to read',
         files)
     form.form_submit_button("Submit")
+    global from_file
+    from_file = False
     return file, num_angles, num_detect, theta
 
 

@@ -4,6 +4,11 @@ import os
 import matplotlib.pyplot as plt
 import math
 from bresenham import bresenham
+from pydicom.dataset import Dataset, FileDataset
+from pydicom.uid import ExplicitVRLittleEndian
+import pydicom._storage_sopclass_uids
+from skimage.util import img_as_ubyte
+from skimage.exposure import rescale_intensity
 
 
 def radon_transform(image, num_angles, num_detect, theta):
@@ -59,7 +64,7 @@ def inverse_radon_transform(sinogram, theta):
 
     max = np.max(reconstruction)
     min = np.min(np.nonzero(sinogram))
-    print(min, max)
+    #print(min, max)
     for x in range(len(reconstruction)):
         for y in range(len(reconstruction[0])):
             if reconstruction[x, y] < min:
@@ -90,31 +95,91 @@ def convolution_filter(sinogram, size):
     return filtered_sinogram
 
 
+@st.cache_data
+def generate_images(file, num_angles, num_detect, theta):
+    image = plt.imread('./images/'+file, format='gray')
+    sinogram = radon_transform(image, num_angles, num_detect, theta)
+    filtered_sinogram = convolution_filter(sinogram, 15)
+    reconstruction = inverse_radon_transform(filtered_sinogram, theta)
+    return sinogram, filtered_sinogram, reconstruction
+
+
+def convert_image_to_ubyte(img):
+    return img_as_ubyte(rescale_intensity(img, out_range=(0.0, 1.0)))
+
+def save_as_dicom(file_name, img, patient_data):
+    print("Saving to file...")
+    img_converted = convert_image_to_ubyte(img)
+    
+    meta = Dataset()
+    meta.MediaStorageSOPClassUID = pydicom._storage_sopclass_uids.CTImageStorage
+    meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
+    meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian  
+
+    ds = FileDataset(None, {}, preamble=b"\0" * 128)
+    ds.file_meta = meta
+    ds.is_little_endian = True
+    ds.is_implicit_VR = False
+
+    ds.SOPClassUID = pydicom._storage_sopclass_uids.CTImageStorage
+    ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+    ds.PatientName = patient_data["PatientName"]
+    ds.PatientID = patient_data["PatientID"]
+    ds.ImageComments = patient_data["ImageComments"]
+    ds.Modality = "CT"
+    ds.SeriesInstanceUID = pydicom.uid.generate_uid()
+    ds.StudyInstanceUID = pydicom.uid.generate_uid()
+    ds.FrameOfReferenceUID = pydicom.uid.generate_uid()
+    ds.BitsStored = 8
+    ds.BitsAllocated = 8
+    ds.SamplesPerPixel = 1
+    ds.HighBit = 7
+    ds.ImagesInAcquisition = 1
+    ds.InstanceNumber = 1
+    ds.Rows, ds.Columns = img_converted.shape
+    ds.ImageType = r"ORIGINAL\PRIMARY\AXIAL"
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelRepresentation = 0
+
+    pydicom.dataset.validate_file_meta(ds.file_meta, enforce_standard=True)
+
+    ds.PixelData = img_converted.tobytes()
+    ds.save_as(file_name, write_like_original=False)
+
 
 def main():
     st.title('CT scan simulator')
     st.subheader('by Agnieszka Grzymska and Michał Pawlicki')
     st.markdown('---')
     file, num_angles, num_detect, theta = side_bar()
-    image = plt.imread('./images/'+file, format='gray')
     st.markdown("### Original image")
+    image = plt.imread('./images/'+file, format='gray')
     st.image(image, width=300)
     st.markdown("### Generated sinogram")
-    sinogram = radon_transform(image, num_angles, num_detect, theta)
+    sinogram, filtered_sinogram, reconstruction = generate_images(file, num_angles, num_detect, theta)
     rotation = num_angles
     steps = st.checkbox(label="Show steps")
     if steps:
         st.markdown("""$Rotation$ $progress$""")
         rotation = st.select_slider("Select number of steps", options=range(1, num_angles + 1, 1), value=num_angles)
-    sinogram = sinogram[:rotation]
-    st.image(sinogram, width=300)
-    filtered_sinogram = convolution_filter(sinogram, 15)
-    print(filtered_sinogram.shape)
+    sinogram_steps = np.zeros((num_angles, num_detect))
+    #for line in range
+    sinogram_steps[:rotation] = sinogram[:rotation]
+    st.image(sinogram_steps, width=300)
     st.markdown("### Filtered sinogram")
     st.image(filtered_sinogram, width=300)
-    reconstruction = inverse_radon_transform(filtered_sinogram, theta)
     st.markdown("### Reconstructed image")
     st.image(reconstruction, width=300)
+    st.markdown('---')
+    st.markdown("### Save as DICOM")
+    form = st.form("save", clear_on_submit=True)
+    patient_data = {}
+    patient_data["PatientName"] = form.text_input(label="Patient name and surname", value="")
+    patient_data["PatientID"] = form.text_input(label="Patient ID number", value="")
+    patient_data["ImageComments"] = form.text_input(label="Comments about the image", value="")
+    if form.form_submit_button("Save"):
+        save_as_dicom("./dicom/"+patient_data["PatientID"], reconstruction, patient_data)
+        
 
 def side_bar():
     form = st.sidebar.form("user_input")

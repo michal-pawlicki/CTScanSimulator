@@ -52,6 +52,7 @@ def inverse_radon_transform(sinogram, theta):
 
     angles = np.linspace(0, np.pi * 2, num_angles, endpoint=False)
     reconstruction = np.zeros((shape_min, shape_min))
+    matrix = np.zeros((shape_min, shape_min))
 
     for i, angle in enumerate(angles):
         x1 = int(r + r * math.cos(angle))
@@ -62,17 +63,24 @@ def inverse_radon_transform(sinogram, theta):
             line = list(bresenham(x1, y1, x2, y2))
             for element in line:
                 reconstruction[element[0], element[1]] += sinogram[i, j]
+                matrix[element[0], element[1]] += 1
+
+    for i in matrix:
+        for j in i:
+            if j == 0:
+                j = 1
+    reconstruction = reconstruction/matrix
 
     max = np.max(reconstruction)
     min = np.min(np.nonzero(sinogram))
     #print(min, max)
-    for x in range(len(reconstruction)):
+    """for x in range(len(reconstruction)):
         for y in range(len(reconstruction[0])):
             if reconstruction[x, y] < min:
                 value = 0
             else:
                 value = (reconstruction[x, y] - min) / (max - min)
-            reconstruction[x, y] = value
+            reconstruction[x, y] = value"""
     return reconstruction
 
 
@@ -193,7 +201,11 @@ def main():
     st.image(filtered_sinogram, width=300)
 
     st.markdown("### Reconstructed image")
-    reconstruction = inverse_radon_transform(filtered_sinogram, theta)
+    filtering = st.checkbox(label="Filtering")
+    if filtering:
+        reconstruction = inverse_radon_transform(filtered_sinogram, theta)
+    else:
+        reconstruction = inverse_radon_transform(sinogram_steps, theta)
     st.image(reconstruction, width=300)
     st.markdown('---')
 
@@ -212,10 +224,10 @@ def side_bar():
     form.markdown('# Set scanner options')
     form.markdown(""" $\Delta$ $\\alpha$ $value$""")
     angles = [1,2,3,4,5,6,8,9,10]
-    alpha = form.select_slider("Select value of alpha", options=angles, value=3)
+    alpha = form.select_slider("Select value of alpha", options=angles, value=1)
     num_angles = int(360/alpha)
     form.markdown("""$Number$ $of$ $detectors$""")
-    num_detect = form.select_slider("Select value of n", options=range(100, 501, 10), value=100)
+    num_detect = form.select_slider("Select value of n", options=range(100, 501, 10), value=300)
     form.markdown("""$Span$ $of$ $the$ $emitter$ $system$""")
     span = form.select_slider("Select value of l", options=range(20, 181), value=90)
     theta = math.radians(span)*2
